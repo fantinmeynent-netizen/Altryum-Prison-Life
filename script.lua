@@ -85,6 +85,12 @@
         Locked = false,
     })
 
+    local VisualTab = Window:Tab({
+        Title = "Visual",
+        Icon = "eye",
+        Locked = false,
+    })
+
     local SettingsTab = Window:Tab({
         Title = "Settings",
         Icon = "settings", -- optional
@@ -551,49 +557,222 @@ TpPointTab:Button({
 })
 
 
+
+
 ----------------------------------------------------------
 ----------------------Exploit Tab-------------------------
 ----------------------------------------------------------
 
-    local Button = ExploitTab:Button({
-        Title = "Anti Tase",
-        Desc = "Fix speed when tased",
-        Locked = false,
-        Callback = function()
+local Button = ExploitTab:Button({
+    Title = "Anti Tase",
+    Desc = "Fix speed when tased",
+    Locked = false,
+    Callback = function()
 
-            -- init interne
-            if not getgenv()._AntiTaseFix then
-                getgenv()._AntiTaseFix = {
-                    Enabled = false,
-                    Loop = nil
-                }
-            end
-
-            local data = getgenv()._AntiTaseFix
-
-            -- toggle
-            data.Enabled = not data.Enabled
-
-            -- stop
-            if not data.Enabled then
-                if data.Loop then data.Loop:Disconnect() end
-                data.Loop = nil
-                return
-            end
-
-            -- start loop
-            data.Loop = game:GetService("RunService").Heartbeat:Connect(function()
-                local char = game.Players.LocalPlayer.Character
-                if not char then return end
-                
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if not hum then return end
-
-                -- PATCH anti tase : si speed tombe à 0 → restore
-                if hum.WalkSpeed == 0 or hum.WalkSpeed < 10 then
-                    hum.WalkSpeed = 16
-                    hum.JumpPower = 50
-                end
-            end)
+        -- init interne
+        if not getgenv()._AntiTaseFix then
+            getgenv()._AntiTaseFix = {
+                Enabled = false,
+                Loop = nil
+            }
         end
-    })
+
+        local data = getgenv()._AntiTaseFix
+
+        -- toggle
+        data.Enabled = not data.Enabled
+
+        -- stop
+        if not data.Enabled then
+            if data.Loop then data.Loop:Disconnect() end
+            data.Loop = nil
+            return
+        end
+
+        -- start loop
+        data.Loop = game:GetService("RunService").Heartbeat:Connect(function()
+            local char = game.Players.LocalPlayer.Character
+            if not char then return end
+            
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hum then return end
+
+            -- PATCH anti tase : si speed tombe à 0 → restore
+            if hum.WalkSpeed == 0 or hum.WalkSpeed < 10 then
+                hum.WalkSpeed = 16
+                hum.JumpPower = 50
+            end
+        end)
+    end
+})
+
+
+----------------------------------------------------------
+-----------------------Visual Tab-------------------------
+----------------------------------------------------------
+
+local Toggle = VisualTab:Toggle({ 
+    Title = "Chams", 
+    Desc = "", 
+    Icon = "", 
+    Type = "Toggle", 
+    Value = false,
+    Callback = function(state)
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        local active = state
+        local connections = {}
+
+        local function createESP(player)
+            local character = player.Character
+            if not character or character:FindFirstChild("WaveESP") then return end
+
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "WaveESP"
+            highlight.FillTransparency = 0.2
+            highlight.OutlineTransparency = 0
+            highlight.OutlineColor = Color3.new(1, 1, 1)
+            highlight.Adornee = character
+            highlight.Parent = character
+
+            local teamIndicator = workspace:FindFirstChild("TeamIndicators")
+            if teamIndicator then
+                local frame = teamIndicator:FindFirstChild(player.Name)
+                if frame and frame:FindFirstChild("Frame") then
+                    highlight.FillColor = frame.Frame.BackgroundColor3
+                end
+            end
+
+            local billboard = Instance.new("BillboardGui")
+            billboard.Name = "WaveNameTag"
+            billboard.Size = UDim2.new(0, 100, 0, 20)
+            billboard.StudsOffset = Vector3.new(0, 3, 0)
+            billboard.AlwaysOnTop = true
+            billboard.Adornee = character:FindFirstChild("Head") or character:FindFirstChildWhichIsA("BasePart")
+            billboard.Parent = character
+
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.Text = player.Name
+            textLabel.TextColor3 = highlight.FillColor
+            textLabel.TextStrokeTransparency = 0
+            textLabel.Font = Enum.Font.SourceSansBold
+            textLabel.TextScaled = true
+            textLabel.Parent = billboard
+        end
+
+        local function clearESP()
+            for _, player in ipairs(Players:GetPlayers()) do
+                local char = player.Character
+                if char then
+                    local esp = char:FindFirstChild("WaveESP")
+                    if esp then esp:Destroy() end
+                    local nameTag = char:FindFirstChild("WaveNameTag")
+                    if nameTag then nameTag:Destroy() end
+                end
+            end
+        end
+
+        local function setupPlayer(player)
+            if player == LocalPlayer then return end
+            if player.Character then createESP(player) end
+            table.insert(connections, player.CharacterAdded:Connect(function(char)
+                if active then
+                    createESP(player)
+                end
+            end))
+        end
+
+        for _, conn in ipairs(connections) do conn:Disconnect() end
+        table.clear(connections)
+        clearESP()
+
+        if active then
+            for _, player in ipairs(Players:GetPlayers()) do
+                setupPlayer(player)
+            end
+            table.insert(connections, Players.PlayerAdded:Connect(function(player)
+                setupPlayer(player)
+            end))
+        end
+    end
+})
+
+
+local Toggle = VisualTab:Toggle({ 
+    Title = "Tracer", 
+    Desc = "", 
+    Icon = "", 
+    Type = "Toggle", 
+    Value = false,
+    Callback = function(state)
+        local Players = game:GetService("Players")
+        local RunService = game:GetService("RunService")
+        local LocalPlayer = Players.LocalPlayer
+        local Camera = workspace.CurrentCamera
+
+        local tracers = {}
+        local connections = {}
+
+        local function cleanup()
+            for _, conn in pairs(connections) do
+                conn:Disconnect()
+            end
+            table.clear(connections)
+
+            for _, line in pairs(tracers) do
+                if line then
+                    line:Remove()
+                end
+            end
+            table.clear(tracers)
+        end
+
+        cleanup()
+        if not state then return end
+
+        connections["render"] = RunService.RenderStepped:Connect(function()
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local root = player.Character.HumanoidRootPart
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
+
+                    if not tracers[player] then
+                        local line = Drawing.new("Line")
+                        line.Thickness = 2
+                        line.Transparency = 1
+                        line.Color = Color3.fromRGB(255, 255, 255)
+                        tracers[player] = line
+                    end
+
+                    local teamIndicator = workspace:FindFirstChild("TeamIndicators")
+                    if teamIndicator then
+                        local frame = teamIndicator:FindFirstChild(player.Name)
+                        if frame and frame:FindFirstChild("Frame") then
+                            tracers[player].Color = frame.Frame.BackgroundColor3
+                        end
+                    end
+
+                    local line = tracers[player]
+                    if onScreen then
+                        line.Visible = true
+                        line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                        line.To = Vector2.new(screenPos.X, screenPos.Y)
+                    else
+                        line.Visible = false
+                    end
+                elseif tracers[player] then
+                    tracers[player].Visible = false
+                end
+            end
+        end)
+
+        connections["playerRemoving"] = Players.PlayerRemoving:Connect(function(player)
+            if tracers[player] then
+                tracers[player]:Remove()
+                tracers[player] = nil
+            end
+        end)
+    end
+})
