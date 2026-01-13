@@ -337,41 +337,67 @@ local Slider = PlayerTab:Slider({
 --noclip----------------------------------------
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local PhysicsService = game:GetService("PhysicsService")
 
-local player = Players.LocalPlayer
-local part = workspace.Part -- Change si nécessaire
+local LP = Players.LocalPlayer
+local noclipEnabled = false
+local conn
 
-local collisionGroup = "NoCollideGroup"
+local mt = getrawmetatable(game)
+local old_index = mt.__newindex
 
-pcall(function()
-	PhysicsService:CreateCollisionGroup(collisionGroup)
-	PhysicsService:CollisionGroupSetCollidable(collisionGroup, collisionGroup, false)
+setreadonly(mt, false)
+
+mt.__newindex = newcclosure(function(self, key, value)
+    if noclipEnabled and typeof(self) == "Instance" and self:IsDescendantOf(LP.Character or {}) and key == "CanCollide" and value == true then
+        return
+    end
+    return old_index(self, key, value)
 end)
 
-local function setCollision(enabled)
-	if enabled then
-		part:SetAttribute("ForceCanCollide", true)
-		PhysicsService:SetPartCollisionGroup(part, "Default")
-	else
-		part:SetAttribute("ForceCanCollide", false)
-		PhysicsService:SetPartCollisionGroup(part, collisionGroup)
-	end
+setreadonly(mt, true)
+
+local function enableNoclip()
+    if conn then conn:Disconnect() conn = nil end
+    conn = RunService.Stepped:Connect(function()
+        local char = LP.Character
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end)
 end
 
-local Toggle = PlayerTab:Toggle({
-	Title = "Toggle",
-	Desc = "",
-	Icon = "",
-	Type = "Toggle",
-	Value = false,
-	Callback = function(state)
-		setCollision(state)
-	end
+local function disableNoclip()
+    if conn then conn:Disconnect() conn = nil end
+    local head = LP.Character and LP.Character:FindFirstChild("Head")
+    if head then
+        head.CanCollide = true
+    end
+end
+
+PlayerTab:Toggle({
+    Title = "Noclip",
+    Desc = "",
+    Icon = "",
+    Type = "Toggle",
+    Value = false,
+    Callback = function(state)
+        noclipEnabled = state
+        if state then
+            enableNoclip()
+        else
+            disableNoclip()
+        end
+    end
 })
 
-player.CharacterAdded:Connect(function()
-	setCollision(false)
+LP.CharacterAdded:Connect(function()
+    if noclipEnabled then
+        task.wait(1)
+        enableNoclip()
+    end
 end)
 
 ----------------------------------------------------------
